@@ -1,0 +1,26 @@
+{
+  "name": "t3-code-slack-bot",
+  "version": "0.1.0",
+  "description": "Start T3 Code threads from a Slack bot running in Socket Mode.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/index.ts",
+    "test": "node --test",
+    "typecheck": "tsc",
+    "lint": "oxlint"
+  },
+  "dependencies": {
+    "@slack/bolt": "^5.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "oxlint": "^1.90.0",
+    "typescript": "^7.0.2"
+  },
+  "packageManager": "pnpm@10.18.2"
+}
