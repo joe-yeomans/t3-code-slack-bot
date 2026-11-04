@@ -2,6 +2,7 @@ import { App } from "@slack/bolt";
 import { loadConfig } from "./config.ts";
 import { createFirstSeen } from "./dedupe.ts";
 import { handleMention, type SlackMessage } from "./handler.ts";
+import { saveImages } from "./images.ts";
 import { startThread } from "./t3.ts";
 
 const config = loadConfig(process.env);
@@ -43,6 +44,7 @@ app.event("app_mention", async ({ event, client, context, logger }) => {
       const { user } = await client.users.info({ user: id });
       return user?.profile?.display_name || user?.real_name || user?.name;
     },
+    saveImages: (images) => saveImages(images, config.slackBotToken),
     startThread: (project, prompt) => startThread(project, prompt),
     logError: (message) => logger.error(message),
   }).catch((error) => logger.error(error));

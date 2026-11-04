@@ -53,9 +53,11 @@ You need Node 24, pnpm, and T3 Code running on the same machine with the `t3` CL
 | `@t3 project:api fix the bug` | `<T3_PROJECTS_DIR>/api` |
 | `@t3 fix the bug` | `T3_DEFAULT_PROJECT`, or ❌ if that isn't set |
 
-Projects must already be added to T3 Code with `t3 project add <path>`. Mention the bot inside a Slack thread to include that thread's messages as context.
+Projects must already be added to T3 Code with `t3 project add <path>`. Mention the bot inside a Slack thread to include that thread's messages as context, including the text of app messages built from blocks or attachments, such as alerts.
 
-**Not supported:** Slack replies don't reach the T3 thread, and images and files aren't passed to the agent. Repeat deliveries from Slack are ignored for an hour, but that memory is lost on restart.
+Images on the mention, or anywhere in its thread, are downloaded to a new `t3-slack-*` folder in the system temp directory, and the prompt lists their paths for the agent to open. The bot keeps the 10 most recent images up to 20 MB each, and doesn't delete them, because the agent may need them later. Your OS clears its temp directory over time. The images don't show in the T3 Code chat, because the `t3` CLI can't attach files yet.
+
+**Not supported:** Slack replies don't reach the T3 thread, and files other than images aren't passed to the agent. Repeat deliveries from Slack are ignored for an hour, but that memory is lost on restart.
 
 ## Troubleshooting
 
@@ -63,6 +65,7 @@ Projects must already be added to T3 Code with `t3 project add <path>`. Mention 
 | --- | --- |
 | `No T3 Code project matches...` | Run `t3 project add <path>`. |
 | `missing_scope` | Add the scope under **OAuth & Permissions** and reinstall the app. The thread may already have started, so check T3 Code before retrying. |
+| ❌ with `Couldn't download image` | Add the `files:read` scope under **OAuth & Permissions** and reinstall the app. |
 | No reaction at all | Check the bot is running and in the channel, and that `ALLOWED_SLACK_USER_ID` is your member ID. |
 | "Agent" label in T3 Code | Expected, because the T3 CLI connects as an agent client. |
 

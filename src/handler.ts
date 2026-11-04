@@ -1,6 +1,7 @@
 import type { Config } from "./config.ts";
+import { pickImages, type SavedImage, type SlackFile, type SlackImage } from "./images.ts";
 import { parseMention, resolveProject } from "./parse.ts";
-import { buildPrompt, formatSlackText, slackUserIds } from "./prompt.ts";
+import { buildPrompt, formatSlackText, slackMessageText, slackUserIds } from "./prompt.ts";
 
 export interface MentionEvent {
   user?: string;
@@ -8,12 +9,16 @@ export interface MentionEvent {
   ts: string;
   thread_ts?: string;
   channel: string;
+  files?: SlackFile[];
 }
 
 export interface SlackMessage {
   user?: string;
   username?: string;
   text?: string;
+  blocks?: unknown[];
+  attachments?: unknown[];
+  files?: SlackFile[];
 }
 
 export interface Deps {
@@ -23,6 +28,8 @@ export interface Deps {
   permalink(channel: string, ts: string): Promise<string | undefined>;
   /** Display name for a Slack user id, or undefined if it can't be found. */
   userName(id: string): Promise<string | undefined>;
+  /** Downloads images from Slack to local files. */
+  saveImages(images: SlackImage[]): Promise<SavedImage[]>;
   startThread(project: string, prompt: string): Promise<string>;
   logError(message: string): void;
 }
@@ -60,9 +67,11 @@ async function startFromMention(
     const resolved = resolveProject(projectName, config);
     if (!resolved.ok) return resolved.error;
 
-    const thread = event.thread_ts ? await deps.threadMessages(event.channel, event.thread_ts) : [];
+    const thread = (event.thread_ts ? await deps.threadMessages(event.channel, event.thread_ts) : []).map(
+      (message) => ({ ...message, text: slackMessageText(message) }),
+    );
 
-    const ids = new Set([event.user, ...[task, ...thread.map((m) => m.text ?? "")].flatMap(slackUserIds)]);
+    const ids = new Set([event.user, ...[task, ...thread.map((m) => m.text)].flatMap(slackUserIds)]);
     for (const m of thread) if (m.user) ids.add(m.user);
     const names = new Map<string, string>();
     await Promise.all(
@@ -70,6 +79,14 @@ async function startFromMention(
         const name = await deps.userName(id).catch(() => undefined);
         if (name) names.set(id, name);
       }),
+    );
+
+    const author = (m: SlackMessage) => (m.user && names.get(m.user)) ?? m.username ?? m.user ?? "unknown";
+
+    // A thread includes the mention itself, so its images are only read from the event outside threads.
+    const withFiles: SlackMessage[] = thread.length > 0 ? thread : [event];
+    const { images, skipped } = pickImages(
+      withFiles.flatMap((m) => (m.files ?? []).map((file) => ({ file, author: author(m) }))),
     );
 
     const prompt = buildPrompt({
@@ -80,10 +97,12 @@ async function startFromMention(
       context:
         thread.length > 1
           ? thread.map((m) => ({
-              author: (m.user && names.get(m.user)) ?? m.username ?? m.user ?? "unknown",
-              text: formatSlackText(m.text ?? "", names),
+              author: author(m),
+              text: formatSlackText(m.text, names),
             }))
           : [],
+      images: images.length > 0 ? await deps.saveImages(images) : [],
+      skippedImages: skipped,
     });
 
     await deps.startThread(resolved.project, prompt);
