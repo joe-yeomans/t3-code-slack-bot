@@ -29,7 +29,8 @@ Run lint, typecheck and tests before finishing a change. CI runs the same three.
 | `src/dedupe.ts` | In-memory check for repeat Slack events |
 | `src/config.ts` | Reads and validates env vars, and fails at startup |
 | `src/parse.ts` | `project:` prefix parsing and project resolution |
-| `src/prompt.ts` | Slack markup cleanup and prompt building |
+| `src/images.ts` | Picks Slack images and downloads them to a temp folder |
+| `src/prompt.ts` | Slack markup cleanup, block and attachment text, and prompt building |
 | `src/t3.ts` | The only code that runs the `t3` CLI |
 | `manifest.yaml` | Slack app scopes and events |
 
@@ -43,11 +44,12 @@ A Slack message can start an agent with full access to the host machine, so keep
 - Validate `project:<name>` against `PROJECT_NAME`, so it can't leave `T3_PROJECTS_DIR`.
 - Only pass `t3` absolute paths or project IDs. It resolves relative paths against the bot's working directory, so a bare `cron` matches whichever project the bot was started in.
 - Label Slack thread messages as context in the prompt, as they can come from other people.
+- Only send the bot token to Slack's file hosts over HTTPS (`isSlackFileUrl`), and build image file names with `safeFileName`, so a Slack file name can't leave the temp folder.
 - Never commit `.env` or put tokens in logs, fixtures or docs.
 
 ## Behaviour to keep
 
-- **No persistent state:** no database or files, and no tracking of threads after they start. The only state is the short-lived dedupe memory in `src/dedupe.ts`. Discuss this before changing it.
+- **No persistent state:** no database, and no tracking of threads after they start. The only state is the short-lived dedupe memory in `src/dedupe.ts`, and images saved to `t3-slack-*` folders in the system temp directory. The bot never deletes those images, because the agent may open them at any point, so it leaves cleanup to the OS. Discuss this before changing it.
 - **Slack feedback:** the bot only reacts with ✅ or ❌, and failure reasons go to the terminal log. It doesn't post messages or thread links.
 - **Meaning of ✅:** the thread started, not that the agent finished. A failed reaction after a successful start must not be reported as a failed start.
 - **Retries:** a repeat of the same channel and message timestamp is skipped for an hour, to avoid duplicate agent threads. This is in memory, so it resets on restart.

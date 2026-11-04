@@ -18,6 +18,9 @@ function fakeDeps(overrides: Partial<Deps> = {}) {
     threadMessages: async () => (log.push("threadMessages"), []),
     permalink: async () => (log.push("permalink"), "https://s/p"),
     userName: async (id) => (log.push("userName"), id === "UJOE" ? "Joe" : "Sam"),
+    saveImages: async (images) => (
+      log.push("saveImages"), images.map((image, i) => ({ path: `/tmp/t3-slack-x/${i + 1}-${image.name}`, author: image.author }))
+    ),
     startThread: async (_project, prompt) => {
       log.push("startThread");
       prompts.push(prompt);
@@ -111,4 +114,61 @@ test("a failed Slack reaction after starting isn't reported as a failed start", 
   await assert.rejects(handleMention(event(), "UBOT", config, deps), /slack down/);
   assert.equal(log.includes("startThread"), true);
   assert.equal(log.some((entry) => entry.startsWith("error:")), false);
+});
+
+test("app message blocks in a thread reach the prompt", async () => {
+  const { deps, prompts } = fakeDeps({
+    threadMessages: async () => [
+      {
+        username: "Sentry",
+        text: "New issue",
+        blocks: [{ type: "section", text: { type: "mrkdwn", text: "TypeError in <https://s.io/1|checkout>" } }],
+      },
+      { user: "UJOE", text: "<@UBOT> fix it" },
+    ],
+  });
+  await handleMention(event({ thread_ts: "0.5" }), "UBOT", config, deps);
+  assert.match(prompts[0]!, /\[Sentry\] New issue\nTypeError in checkout \(https:\/\/s\.io\/1\)\n\[Joe\]/);
+});
+
+const screenshot = (name: string) => ({
+  name,
+  mimetype: "image/png",
+  size: 10,
+  url_private_download: `https://files.slack.com/${name}`,
+});
+
+test("images on the mention are saved and listed in the prompt", async () => {
+  const { deps, prompts } = fakeDeps();
+  await handleMention(event({ files: [screenshot("bug.png")] }), "UBOT", config, deps);
+  assert.match(prompts[0]!, /Images from Slack, saved on this machine\. Open them to see them:\n- \/tmp\/t3-slack-x\/1-bug\.png \(from Joe\)$/);
+});
+
+test("images from the whole thread are included", async () => {
+  const { deps, prompts } = fakeDeps({
+    threadMessages: async () => [
+      { user: "USAM", text: "look", files: [screenshot("sam.png")] },
+      { user: "UJOE", text: "<@UBOT> fix it", files: [screenshot("joe.png")] },
+    ],
+  });
+  await handleMention(event({ thread_ts: "0.5", files: [screenshot("joe.png")] }), "UBOT", config, deps);
+  assert.match(prompts[0]!, /1-sam\.png \(from Sam\)\n- \/tmp\/t3-slack-x\/2-joe\.png \(from Joe\)$/);
+});
+
+test("no images means no download and no image section", async () => {
+  const { deps, log, prompts } = fakeDeps();
+  await handleMention(event(), "UBOT", config, deps);
+  assert.equal(log.includes("saveImages"), false);
+  assert.doesNotMatch(prompts[0]!, /Images/);
+});
+
+test("a failed image download fails the start", async () => {
+  const { deps, log } = fakeDeps({
+    saveImages: async () => {
+      throw new Error("Couldn't download image");
+    },
+  });
+  await handleMention(event({ files: [screenshot("bug.png")] }), "UBOT", config, deps);
+  assert.deepEqual(log.slice(-2), ["error:Couldn't download image", "react:x"]);
+  assert.equal(log.includes("startThread"), false);
 });
